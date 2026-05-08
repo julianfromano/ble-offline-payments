@@ -2,11 +2,15 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 /**
- * Native BLE central plugin (Android only).
+ * Native BLE central plugin (Android + iOS).
  *
- * Web Bluetooth funciona en Chrome (PWA) pero NO dentro de la WebView de la APK
- * Capacitor. Para que el "Pagar" funcione en la APK delegamos al código Kotlin
- * que usa BluetoothLeScanner + BluetoothGatt como cliente.
+ * Web Bluetooth funciona en Chrome (PWA) pero NO dentro de la WebView de la app
+ * Capacitor. Para que el "Pagar" funcione en la app nativa delegamos al código
+ * Kotlin (Android, BluetoothLeScanner + BluetoothGatt) o Swift (iOS,
+ * CBCentralManager + CBPeripheral).
+ *
+ * Diferencia iOS: `address` en scan_result / connectByAddress es el UUID de
+ * identificador del periférico (CBPeripheral.identifier), no una MAC address.
  *
  * Métodos:
  *  - scanList({timeoutMs}): inicia scan continuo. Cada hallazgo se emite como
