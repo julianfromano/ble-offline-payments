@@ -59,6 +59,39 @@ export interface Ack extends Envelope {
   reason?: string;
 }
 
+/**
+ * TxPayload — the canonical body of a payment transaction (protocol v2+).
+ * Signed by the buyer and countersigned by the vendor to form a TxReceipt.
+ * Fields marked optional are phased in: buyer_token_hash requires a server-issued
+ * offline token; gossip_commitment is added in P2.
+ *
+ * vendor_nonce is provided by the vendor per-session to prevent the buyer from
+ * pre-computing signatures for replay attacks.
+ */
+export interface TxPayload {
+  tx_id: string;          // UUID v4
+  timestamp: string;      // ISO-8601
+  vendor_nonce: string;   // hex, 32 random bytes provided by vendor
+  buyer_pubkey: string;   // base64 ECDH P-256 raw (65 bytes) — Ed25519 in P1+
+  vendor_pubkey: string;  // base64 ECDH P-256 raw (65 bytes)
+  amount: number;         // integer, minor units (centavos)
+  concept: string;
+  currency: Currency;
+  buyer_token_hash?: string;    // SHA-256 of current offline token (P1)
+  gossip_commitment?: string;   // SHA-256 of GossipBlob (P2)
+}
+
+/**
+ * TxReceipt — double-signed transaction record stored on both devices.
+ * buyer_sig covers TxPayload; vendor_sig covers the full TxSigned object.
+ * Provides bilateral non-repudiation.
+ */
+export interface TxReceipt {
+  payload: TxPayload;
+  buyer_sig: string;  // base64, ECDSA P-256 sig over canonical JSON of payload
+  vendor_sig: string; // base64, ECDSA P-256 sig over canonical JSON of {payload, buyer_sig}
+}
+
 /** Local ledger record (not transmitted; persisted in IndexedDB). */
 export interface LedgerRecord {
   /** tx_id (intent) is the primary key. */
