@@ -1,0 +1,28 @@
+{
+  "name": "ble-pay-pwa",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Phase 1 prototype: offline store-and-forward payments PWA over Web Bluetooth (Android <-> Android via BLE relay).",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/web-bluetooth": "^0.0.20",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2",
+    "vite-plugin-pwa": "^0.20.1"
+  }
+}
