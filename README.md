@@ -1,114 +1,71 @@
-# BLE Pay — PWA (Fase 1)
+# BLE Offline Payments — Interoperable Android/iOS
 
-Prototipo de **pagos offline store-and-forward** Android↔Android sobre **Web
-Bluetooth (BLE)**, usando un **relay GATT** (ESP32 u otro peripheral) como
-broker de mensajes entre las dos PWAs.
+Sistema de pagos offline interoperable entre apps nativas **Android** e **iOS** usando **Bluetooth Low Energy (BLE)**, con un agente central solo para registro, provisión de claves y sincronización. No requiere conexión a internet en el momento de la transacción.
 
-> **Solo prueba.** No es seguro para dinero real. Ver
-> [docs/protocol-v0.md](docs/protocol-v0.md) para el contrato del protocolo y
-> sus limitaciones.
+## Descripción
 
-## Características Fase 1
+- **Pagos offline** entre dos celulares (comprador y vendedor) sin autoridad central en el momento de la transacción.
+- **Interoperable:** funciona entre Android y iOS, sin hardware adicional ni relay BLE.
+- **Apps nativas:** implementadas con Capacitor, plugins BLE nativos (Kotlin/Swift).
+- **Agente central:** solo para onboarding, provisión de claves/certificados y sincronización de transacciones. No participa en el flujo offline.
 
-- UI en dos modos: **Cobrar** y **Pagar**.
-- Mensajes JSON versionados, canonicalizados y validados con SHA-256 (WebCrypto).
-- TTL + nonce + tx_id para evitar replays y duplicados (idempotencia).
-- Ledger local en IndexedDB con estados `CREATED | SENT | ACKED | FAILED |
-  EXPIRED` y export JSON.
-- Logs por etapa (`scan`, `connect`, `read`, `write`, `notify`, …).
-- PWA instalable (manifest + service worker vía `vite-plugin-pwa`).
+## Arquitectura
 
-## Estructura
-
-```
-src/
-  ble/        # Web Bluetooth client (requestDevice, GATT, read/write/notify)
-  protocol/   # Tipos, codec JSON canónico, WebCrypto helpers
-  storage/    # IndexedDB + ledger (idempotencia y export)
-  ui/         # React UI (App, ChargeMode, PayMode, Ledger, Logs)
-docs/         # protocol-v0.md
-firmware-relay-esp32/   # placeholder para el firmware del relay
-```
+- **Canal:** BLE GATT directo entre apps (sin relay, sin PWA, sin ESP32).
+- **Seguridad:**
+  - Provisión de claves Ed25519 en TEE/Secure Enclave.
+  - Certificados y tokens de saldo firmados por el backend.
+  - Canal BLE cifrado con DH efímero + firma Ed25519 + AES-GCM.
+  - Doble firma de transacciones, chain_hash para detectar doble gasto.
+- **UX:**
+  - El vendedor muestra un código corto (shortId) y un PIN de un solo uso.
+  - El comprador ingresa el PIN y selecciona el puesto correcto por nombre/código.
+  - Confirmación bilateral visual antes de firmar.
 
 ## Requisitos
 
-- Node 18+ (recomendado 20).
-- Chrome en Android para correr la PWA (Web Bluetooth no está en iOS Safari).
-- Un peripheral BLE que implemente el servicio descrito en
-  [docs/protocol-v0.md](docs/protocol-v0.md) (UUIDs custom).
-- Contexto seguro: **HTTPS** o `http://localhost`.
+- Node.js 18+ (para build y tooling).
+- Android Studio y/o Xcode para compilar apps nativas.
+- Cuenta en el agente central para onboarding y provisión de claves.
+- Dispositivos Android (8+) y/o iOS (13+) con BLE.
 
-## Instalación
+## Instalación y Build
 
 ```bash
 npm install
+# Para Android:
+npx cap sync android
+# Para iOS (en Mac):
+npx cap sync ios
 ```
 
-## Desarrollo local (dos teléfonos en la misma red Wi-Fi)
+## Flujo de uso
 
-Web Bluetooth requiere contexto seguro; en Android, `localhost` no aplica si
-servís a otro device. Opciones:
+1. **Onboarding:**
+   - El usuario se registra en el agente central, que genera y provisiona claves/certificados y tokens de saldo offline.
+2. **Cobrar:**
+   - El vendedor ingresa el monto y publica el cobro, mostrando shortId y PIN.
+   - La app anuncia el servicio BLE con nombre único.
+3. **Pagar:**
+   - El comprador ingresa el PIN y selecciona el puesto correcto.
+   - Se establece canal BLE seguro, se firma y confirma la transacción offline.
+4. **Sincronización:**
+   - Cuando cualquiera de los dos recupera conectividad, sincroniza con el agente central para liquidar y validar las transacciones.
 
-1. **Túnel HTTPS público** (más simple): usá `cloudflared` o `ngrok`:
-   ```bash
-   npm run dev
-   # en otra terminal:
-   cloudflared tunnel --url http://localhost:5173
-   ```
-   Abrí la URL HTTPS resultante en ambos teléfonos.
+## Estado actual
 
-2. **Vite con HTTPS local + cert confiable**: generá un cert con `mkcert` y
-   configurá `server.https` en `vite.config.ts`.
+- Plugins BLE nativos funcionales en Android (Kotlin). Port a Swift para iOS pendiente.
+- Protocolo seguro v1 implementado: handshake ECDH+PIN, canal cifrado, doble firma, chain_hash.
+- UI React: modos Cobrar y Pagar, lista de puestos, PIN y shortId, ledger local.
+- Sin relay BLE, sin PWA, sin dependencias de hardware externo.
 
-> No es necesario para correr en `localhost` desde la PC, pero sí desde celular.
+## Seguridad
 
-## Build / Preview
-
-```bash
-npm run build
-npm run preview -- --host
-```
-
-## Pruebas manuales (flujo Pay→Ack)
-
-Necesitás dos celulares Android (`A` = receptor, `B` = pagador) y el relay
-encendido, ambos cerca del relay.
-
-1. En `A` abrí la PWA → **Cobrar**.
-   - Completá monto, moneda, TTL.
-   - Tocá **Publicar intent y cobrar**.
-   - Aceptá el selector de dispositivos y elegí `BLEPay-Relay`.
-   - El estado debe pasar a `publicando intent` → `esperando ack`.
-2. En `B` abrí la PWA → **Pagar**.
-   - Tocá **Escanear y leer intent**, elegí el mismo `BLEPay-Relay`.
-   - Verificá monto/moneda/memo. Tocá **Confirmar pago**.
-3. En `A` el estado debe cambiar a `cobrado`. En ambos teléfonos, la pestaña
-   **Ledger** muestra la transacción `ACKED`.
-4. **Idempotencia**: volvé a tocar **Escanear y leer intent** en `B` con el
-   mismo intent → debe rechazarse por `tx_id repetido`.
-5. **TTL**: poné TTL=2s en `A`, esperá 5s antes de leer en `B` → debe pasar a
-   `EXPIRED`.
-6. **Hash**: si modificás el firmware para emitir un payload corrupto, el lector
-   debe rechazar con `Hash inválido`.
-7. **Export**: tab **Ledger** → **Exportar JSON** descarga el ledger local.
-
-## Solución de problemas
-
-- **"Web Bluetooth no disponible"**: usá Chrome en Android, sobre HTTPS o
-  `localhost`. Habilitá Bluetooth y Ubicación (Android lo exige para escaneo).
-- **El selector no muestra el relay**: confirmá que advertise el Service UUID o
-  que el `name` empiece con `BLEPay-Relay`.
-- **`NotSupportedError` en `requestDevice`**: solo se puede invocar desde un
-  gesto del usuario (click/tap).
-- **Desconexiones aleatorias**: la app reintenta con backoff. Mantené las apps
-  en primer plano (Android puede dormir BLE en background).
-
-## Roadmap
-
-- v1: Firmas Ed25519 + cifrado E2E.
-- v1.1: Reconexión de larga duración y store-and-forward multi-relay.
-- v2: Eliminar el relay (BLE directo) usando una app wrapper Android nativa.
+- Claves privadas protegidas en TEE/Secure Enclave.
+- Tokens de saldo y certificados con TTL corto.
+- Doble firma y chain_hash para no-repudio y detección de doble gasto.
+- Sincronización obligatoria para renovar saldo y liquidar pagos.
 
 ## Licencia
 
-Prototipo interno. Sin licencia pública por ahora.
+MIT. Ver LICENSE.
