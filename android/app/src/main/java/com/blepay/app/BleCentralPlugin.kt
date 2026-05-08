@@ -450,9 +450,9 @@ class BleCentralPlugin : Plugin() {
             ret.put("address", gatt?.device?.address ?: "")
             call.resolve(ret)
             emitState("intent_read", "${value.size} bytes")
-            // After delivering the initial INTENT bytes, enable notifications so the
-            // peer can push subsequent encrypted intent updates (protocol v1).
-            enableIntentNotifications()
+            // Notifications are enabled AFTER the ack write completes (onCharacteristicWrite)
+            // to avoid ERROR_GATT_WRITE_REQUEST_BUSY (201): the GATT stack is serial and
+            // writing the CCCD descriptor here would block the upcoming writeAck call.
         }
 
         // API 33+ overload — notification with bytes.
@@ -489,6 +489,8 @@ class BleCentralPlugin : Plugin() {
             }
             val ret = JSObject(); ret.put("ok", true); call.resolve(ret)
             emitState("ack_written", "ok")
+            // Now safe to enable INTENT notifications: no other GATT op is in-flight.
+            enableIntentNotifications()
         }
     }
 }
