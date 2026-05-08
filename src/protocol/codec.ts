@@ -31,7 +31,7 @@ function canonicalize(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`).join(',')}}`;
 }
 
-async function computeHash(envelopeWithoutHash: Omit<Envelope, 'hash'> & Record<string, unknown>): Promise<string> {
+async function computeHash(envelopeWithoutHash: Omit<Envelope, 'hash'>): Promise<string> {
   const json = canonicalize(envelopeWithoutHash);
   return sha256Hex(TEXT_ENCODER.encode(json));
 }
@@ -61,7 +61,7 @@ export async function createPaymentIntent(input: {
     receiver_ephemeral_id: randomHex(16),
     ...(input.memo ? { memo: input.memo.slice(0, 80) } : {})
   };
-  const hash = await computeHash(base as unknown as Record<string, unknown>);
+  const hash = await computeHash(base as Omit<Envelope, 'hash'>);
   return { ...base, hash };
 }
 
@@ -81,7 +81,7 @@ export async function createAck(
     result,
     ...(reason ? { reason: reason.slice(0, 80) } : {})
   };
-  const hash = await computeHash(base as unknown as Record<string, unknown>);
+  const hash = await computeHash(base as Omit<Envelope, 'hash'>);
   return { ...base, hash };
 }
 

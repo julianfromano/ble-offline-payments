@@ -53,6 +53,6 @@ export function uuidv4(): string {
 
 /** SHA-256 of bytes, hex-encoded. */
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const dv = await subtle.digest('SHA-256', bytes);
+  const dv = await subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>);
   return toHex(new Uint8Array(dv));
 }

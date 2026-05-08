@@ -119,7 +119,7 @@ export async function readIntent(h: RelayHandles, timeoutMs = DEFAULT_TIMEOUT): 
 export async function writeIntent(h: RelayHandles, payload: Uint8Array, timeoutMs = DEFAULT_TIMEOUT): Promise<void> {
   logger.info('write', `Publicando INTENT (${payload.byteLength} bytes)`);
   // writeValueWithResponse provides delivery confirmation.
-  await withTimeout(h.intent.writeValueWithResponse(payload), timeoutMs, 'write:intent');
+  await withTimeout(h.intent.writeValueWithResponse(payload as Uint8Array<ArrayBuffer>), timeoutMs, 'write:intent');
 }
 
 /**
@@ -127,7 +127,7 @@ export async function writeIntent(h: RelayHandles, payload: Uint8Array, timeoutM
  */
 export async function writeAck(h: RelayHandles, payload: Uint8Array, timeoutMs = DEFAULT_TIMEOUT): Promise<void> {
   logger.info('write', `Escribiendo ACK (${payload.byteLength} bytes)`);
-  await withTimeout(h.ack.writeValueWithResponse(payload), timeoutMs, 'write:ack');
+  await withTimeout(h.ack.writeValueWithResponse(payload as Uint8Array<ArrayBuffer>), timeoutMs, 'write:ack');
 }
 
 /**

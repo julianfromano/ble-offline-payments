@@ -45,7 +45,7 @@ export async function exportPubRaw(pub: CryptoKey): Promise<Uint8Array> {
 export async function importPubRaw(bytes: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
-    bytes,
+    bytes as Uint8Array<ArrayBuffer>,
     { name: 'ECDH', namedCurve: 'P-256' },
     true,
     []
@@ -103,7 +103,7 @@ export async function aesGcmEncrypt(
 ): Promise<{ iv: Uint8Array; ct: Uint8Array }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext as Uint8Array<ArrayBuffer>)
   );
   return { iv, ct };
 }
@@ -115,7 +115,7 @@ export async function aesGcmDecrypt(
   ct: Uint8Array
 ): Promise<Uint8Array> {
   return new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct as Uint8Array<ArrayBuffer>)
   );
 }
 
