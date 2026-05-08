@@ -186,11 +186,32 @@ export interface SecureAckEnv {
   ct: string; // ciphertext of the canonical Ack JSON
 }
 
+/**
+ * Buyer confirm — payer → receiver, sent automatically when the payer sees the
+ * intent and before the final ack. Lets the vendor display "Comprador confirma $Y"
+ * without any extra action from either party (~200ms BLE round-trip).
+ */
+export interface SecureBuyerConfirm {
+  v: 1;
+  kind: 'buyer_confirm';
+  iv: string;
+  ct: string; // ciphertext of BuyerConfirmPayload
+}
+
+/** Plaintext inside a SecureBuyerConfirm. */
+export interface BuyerConfirmPayload {
+  tx_id: string;
+  amount: number;
+  currency: string;
+  ts: number;
+}
+
 export type SecureEnvelope =
   | SecureHello
   | SecureHelloAck
   | SecureIntentEnv
-  | SecureAckEnv;
+  | SecureAckEnv
+  | SecureBuyerConfirm;
 
 /** Plaintext probe value used inside hello_ack to authenticate the channel. */
 export const HELLO_PROBE = 'BLEPAY-HELLO-V1';
@@ -214,7 +235,7 @@ export function decodeSecureEnvelope(bytes: Uint8Array): SecureEnvelope {
   const obj = JSON.parse(text) as Record<string, unknown>;
   if (obj.v !== 1) throw new Error(`Versión secure no soportada: ${String(obj.v)}`);
   const kind = obj.kind;
-  if (kind !== 'hello' && kind !== 'hello_ack' && kind !== 'sec_intent' && kind !== 'sec_ack') {
+  if (kind !== 'hello' && kind !== 'hello_ack' && kind !== 'sec_intent' && kind !== 'sec_ack' && kind !== 'buyer_confirm') {
     throw new Error(`kind inválido: ${String(kind)}`);
   }
   return obj as unknown as SecureEnvelope;
