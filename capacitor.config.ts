@@ -7,6 +7,11 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   android: {
     allowMixedContent: false
+  },
+  ios: {
+    contentInset: 'automatic',
+    // Scroll is handled by our own React UI.
+    scrollEnabled: false
   }
 };
 

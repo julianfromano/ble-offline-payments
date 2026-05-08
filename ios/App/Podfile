@@ -1,0 +1,19 @@
+# Podfile for BLE Pay iOS app.
+# Run `pod install` inside ios/App/ after `npx cap add ios && npx cap sync`.
+require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+
+platform :ios, '14.0'
+use_frameworks!
+
+# Workaround: avoid Xcode caching stale pods across installs.
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+  pod 'Capacitor',       :path => '../../node_modules/@capacitor/core'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+end
+
+target 'App' do
+  capacitor_pods
+  # Add project-specific pods here (e.g. analytics, crash reporting).
+end

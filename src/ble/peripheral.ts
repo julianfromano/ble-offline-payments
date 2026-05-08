@@ -2,10 +2,11 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 /**
- * Native BLE peripheral plugin (Android only).
+ * Native BLE peripheral plugin (Android + iOS).
  *
- * Web Bluetooth no permite advertising/GATT server. En APK Capacitor delegamos
- * al código Kotlin que usa BluetoothLeAdvertiser + BluetoothGattServer.
+ * Web Bluetooth no permite advertising/GATT server. En la app nativa Capacitor
+ * delegamos al código Kotlin (Android) o Swift/CoreBluetooth (iOS) que implementa
+ * BluetoothLeAdvertiser + BluetoothGattServer / CBPeripheralManager.
  *
  * Métodos:
  *  - startServer({intentBase64}): empieza advertising con el SERVICE_UUID y

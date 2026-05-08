@@ -1,0 +1,110 @@
+name: Build iOS IPA (unsigned)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      # Save the files we committed to ios/ before cap regenerates the folder
+      - name: Stash custom plugin files
+        run: |
+          mkdir -p /tmp/ble-ios
+          cp ios/App/App/BleCentralPlugin.swift  /tmp/ble-ios/
+          cp ios/App/App/BleCentralPlugin.m       /tmp/ble-ios/
+          cp ios/App/App/BlePeripheralPlugin.swift /tmp/ble-ios/
+          cp ios/App/App/BlePeripheralPlugin.m    /tmp/ble-ios/
+          cp ios/App/Podfile                      /tmp/ble-ios/Podfile
+
+      # cap add ios fails if ios/ already exists
+      - name: Remove partial ios/ directory
+        run: rm -rf ios
+
+      - name: Add iOS platform (generates Xcode project)
+        run: npx cap add ios
+
+      - name: Sync web build into native project
+        run: npx cap sync ios
+
+      # Put our BLE plugin Swift/ObjC sources back
+      - name: Restore BLE plugin files
+        run: |
+          cp /tmp/ble-ios/BleCentralPlugin.swift   ios/App/App/
+          cp /tmp/ble-ios/BleCentralPlugin.m        ios/App/App/
+          cp /tmp/ble-ios/BlePeripheralPlugin.swift ios/App/App/
+          cp /tmp/ble-ios/BlePeripheralPlugin.m     ios/App/App/
+          cp /tmp/ble-ios/Podfile                   ios/App/Podfile
+
+      # Add Bluetooth usage descriptions and capability keys that cap doesn't add
+      - name: Patch Info.plist (Bluetooth permissions)
+        run: |
+          PLIST=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothAlwaysUsageDescription string 'BLE Pay usa Bluetooth para procesar pagos offline entre dispositivos cercanos.'" \
+            "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothPeripheralUsageDescription string 'BLE Pay usa Bluetooth para actuar como terminal de cobro.'" \
+            "$PLIST" 2>/dev/null || true
+          # Ensure bluetooth-le is in UIRequiredDeviceCapabilities
+          /usr/libexec/PlistBuddy -c \
+            "Add :UIRequiredDeviceCapabilities:0 string 'bluetooth-le'" \
+            "$PLIST" 2>/dev/null || true
+
+      - name: Install xcodeproj gem
+        run: gem install xcodeproj --no-document
+
+      # Wire the Swift/ObjC files into the .xcodeproj compile sources
+      - name: Add plugin files to Xcode project
+        run: ruby scripts/ios-add-plugins.rb
+
+      - name: Install CocoaPods
+        run: |
+          cd ios/App
+          pod install --repo-update
+
+      # Build for device, no code signing (Sideloadly will re-sign with free Apple ID)
+      - name: Build .app (unsigned, Release)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build | xcpretty || true
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH=$(find ios/DerivedData/Build/Products/Release-iphoneos -name "App.app" -maxdepth 1)
+          mkdir -p /tmp/ipa-staging/Payload
+          cp -r "$APP_PATH" /tmp/ipa-staging/Payload/
+          cd /tmp/ipa-staging
+          zip -r BLEPay-unsigned.ipa Payload/
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLEPay-unsigned-ipa
+          path: /tmp/ipa-staging/BLEPay-unsigned.ipa
+          retention-days: 30
