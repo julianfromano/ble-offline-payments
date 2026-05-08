@@ -60,6 +60,9 @@ class BleCentralPlugin : Plugin() {
     private var pendingScanCall: PluginCall? = null
     private var pendingConnectCall: PluginCall? = null
     private var pendingWriteAckCall: PluginCall? = null
+    // Holds intent bytes between INTENT read and CCCD write completion so we
+    // can resolve the connect call only after notifications are fully enabled.
+    private var pendingIntentBytes: ByteArray? = null
     private val scanInFlight = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var scanTimeoutRunnable: Runnable? = null
@@ -284,6 +287,7 @@ class BleCentralPlugin : Plugin() {
         pendingConnectCall = null
         pendingWriteAckCall?.reject("Cancelado por disconnect()")
         pendingWriteAckCall = null
+        pendingIntentBytes = null
         scanInFlight.set(false)
         emitState("disconnected", "central cerrado")
         val ret = JSObject(); ret.put("ok", true); call.resolve(ret)
@@ -374,6 +378,7 @@ class BleCentralPlugin : Plugin() {
                     emitState("disconnected", "status=$status")
                     val pc = pendingConnectCall; pendingConnectCall = null
                     val pw = pendingWriteAckCall; pendingWriteAckCall = null
+                    pendingIntentBytes = null
                     pc?.reject("GATT desconectado antes de leer (status=$status)")
                     pw?.reject("GATT desconectado durante write (status=$status)")
                     try { g.close() } catch (_: Exception) {}
@@ -440,19 +445,16 @@ class BleCentralPlugin : Plugin() {
         private fun handleRead(uuid: UUID, value: ByteArray, status: Int) {
             if (uuid != CHAR_INTENT_UUID) return
             val call = pendingConnectCall ?: return
-            pendingConnectCall = null
-            scanInFlight.set(false)
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                pendingConnectCall = null; scanInFlight.set(false)
                 call.reject("read INTENT status=$status"); return
             }
-            val ret = JSObject()
-            ret.put("intentBase64", Base64.encodeToString(value, Base64.NO_WRAP))
-            ret.put("address", gatt?.device?.address ?: "")
-            call.resolve(ret)
             emitState("intent_read", "${value.size} bytes")
-            // Notifications are enabled AFTER the ack write completes (onCharacteristicWrite)
-            // to avoid ERROR_GATT_WRITE_REQUEST_BUSY (201): the GATT stack is serial and
-            // writing the CCCD descriptor here would block the upcoming writeAck call.
+            // Store bytes; resolve the call only after CCCD write completes so that
+            // notifications are active before JS sends the hello_ack. This prevents the
+            // race where the vendor notifies sec_intent before the central is subscribed.
+            pendingIntentBytes = value
+            enableIntentNotifications()
         }
 
         // API 33+ overload — notification with bytes.
@@ -476,6 +478,29 @@ class BleCentralPlugin : Plugin() {
             emitIntentUpdate(characteristic.value ?: ByteArray(0))
         }
 
+        override fun onDescriptorWrite(
+            g: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (descriptor.uuid != CCCD_UUID) return
+            val intentBytes = pendingIntentBytes ?: return
+            val call = pendingConnectCall ?: return
+            pendingIntentBytes = null
+            pendingConnectCall = null
+            scanInFlight.set(false)
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                call.reject("CCCD write status=$status"); return
+            }
+            // Notifications are now active — safe to tell JS to proceed with hello_ack.
+            // writeAck will find no in-flight GATT op and succeed immediately.
+            val ret = JSObject()
+            ret.put("intentBase64", Base64.encodeToString(intentBytes, Base64.NO_WRAP))
+            ret.put("address", g.device?.address ?: "")
+            call.resolve(ret)
+            emitState("notifications_enabled", "listo para writeAck")
+        }
+
         override fun onCharacteristicWrite(
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -489,8 +514,6 @@ class BleCentralPlugin : Plugin() {
             }
             val ret = JSObject(); ret.put("ok", true); call.resolve(ret)
             emitState("ack_written", "ok")
-            // Now safe to enable INTENT notifications: no other GATT op is in-flight.
-            enableIntentNotifications()
         }
     }
 }
