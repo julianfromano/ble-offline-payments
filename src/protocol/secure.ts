@@ -115,7 +115,7 @@ export async function aesGcmDecrypt(
   ct: Uint8Array
 ): Promise<Uint8Array> {
   return new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct as Uint8Array<ArrayBuffer>)
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as Uint8Array<ArrayBuffer> }, key, ct as Uint8Array<ArrayBuffer>)
   );
 }
 
