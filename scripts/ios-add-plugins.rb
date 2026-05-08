@@ -4,7 +4,6 @@ require 'xcodeproj'
 
 PROJECT_PATH = 'ios/App/App.xcodeproj'
 TARGET_NAME  = 'App'
-# Paths relative to the group folder (ios/App/App/)
 PLUGIN_FILES = %w[
   BleCentralPlugin.swift
   BleCentralPlugin.m
@@ -16,11 +15,34 @@ project = Xcodeproj::Project.open(PROJECT_PATH)
 target  = project.targets.find { |t| t.name == TARGET_NAME }
 abort "Target '#{TARGET_NAME}' not found in #{PROJECT_PATH}" unless target
 
-# Locate the 'App' group inside the main 'App' group (App > App > *.swift)
-app_group = project.main_group
-             .children.find { |g| g.respond_to?(:name) && g.name == 'App' }
-             &.children&.find { |g| g.respond_to?(:name) && g.name == 'App' }
-abort 'Could not locate App/App group in project' unless app_group
+# Find the group that already contains AppDelegate.swift — that is the app
+# sources group regardless of how cap names the hierarchy.
+def find_group_with_file(group, filename)
+  return group if group.files.any? { |f| f.path == filename }
+  group.groups.each do |child|
+    result = find_group_with_file(child, filename)
+    return result if result
+  end
+  nil
+end
+
+app_group = find_group_with_file(project.main_group, 'AppDelegate.swift')
+
+unless app_group
+  # Fallback: print the tree so the next error is actionable
+  def print_tree(group, indent = 0)
+    prefix = '  ' * indent
+    name = group.respond_to?(:name) ? group.name : group.path
+    puts "#{prefix}[group] #{name}"
+    group.files.each { |f| puts "#{prefix}  #{f.path}" }
+    group.groups.each { |g| print_tree(g, indent + 1) }
+  end
+  puts "=== xcodeproj group tree ==="
+  print_tree(project.main_group)
+  abort 'Could not locate the app sources group (AppDelegate.swift not found)'
+end
+
+puts "Found app group: #{app_group.name || app_group.path}"
 
 added = 0
 PLUGIN_FILES.each do |filename|
