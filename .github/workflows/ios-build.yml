@@ -22,34 +22,33 @@ jobs:
       - name: Build web assets
         run: npm run build
 
-      # Save the files we committed to ios/ before cap regenerates the folder
+      # Save the BLE plugin Swift/ObjC files before cap regenerates ios/
+      # Do NOT save the Podfile — let cap generate it fresh (Capacitor 6 changed paths)
       - name: Stash custom plugin files
         run: |
           mkdir -p /tmp/ble-ios
-          cp ios/App/App/BleCentralPlugin.swift  /tmp/ble-ios/
-          cp ios/App/App/BleCentralPlugin.m       /tmp/ble-ios/
+          cp ios/App/App/BleCentralPlugin.swift   /tmp/ble-ios/
+          cp ios/App/App/BleCentralPlugin.m        /tmp/ble-ios/
           cp ios/App/App/BlePeripheralPlugin.swift /tmp/ble-ios/
-          cp ios/App/App/BlePeripheralPlugin.m    /tmp/ble-ios/
-          cp ios/App/Podfile                      /tmp/ble-ios/Podfile
+          cp ios/App/App/BlePeripheralPlugin.m     /tmp/ble-ios/
 
       # cap add ios fails if ios/ already exists
       - name: Remove partial ios/ directory
         run: rm -rf ios
 
-      - name: Add iOS platform (generates Xcode project)
+      - name: Add iOS platform (generates Xcode project + Podfile)
         run: npx cap add ios
 
       - name: Sync web build into native project
         run: npx cap sync ios
 
-      # Put our BLE plugin Swift/ObjC sources back
+      # Put our BLE plugin Swift/ObjC sources back (Podfile stays as generated)
       - name: Restore BLE plugin files
         run: |
           cp /tmp/ble-ios/BleCentralPlugin.swift   ios/App/App/
           cp /tmp/ble-ios/BleCentralPlugin.m        ios/App/App/
           cp /tmp/ble-ios/BlePeripheralPlugin.swift ios/App/App/
           cp /tmp/ble-ios/BlePeripheralPlugin.m     ios/App/App/
-          cp /tmp/ble-ios/Podfile                   ios/App/Podfile
 
       # Add Bluetooth usage descriptions and capability keys that cap doesn't add
       - name: Patch Info.plist (Bluetooth permissions)
