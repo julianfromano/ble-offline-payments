@@ -63,6 +63,8 @@ class BlePeripheralPlugin : Plugin() {
     private var pendingIntent: ByteArray = ByteArray(0)
     private var pendingStartCall: PluginCall? = null
     private var pendingDeviceName: String = DEFAULT_DEVICE_NAME
+    /** Original adapter name saved before advertising; restored on stopServer(). */
+    private var originalAdapterName: String? = null
 
     @PluginMethod
     fun isAvailable(call: PluginCall) {
@@ -158,8 +160,11 @@ class BlePeripheralPlugin : Plugin() {
                 service.addCharacteristic(it)
             }
 
-            // Set device name (best effort) and open server.
-            try { adapter.name = pendingDeviceName } catch (_: SecurityException) { /* ignore */ }
+            // Temporarily rename the adapter for discovery; restored in stopServer().
+            try {
+                originalAdapterName = adapter.name
+                adapter.name = pendingDeviceName
+            } catch (_: SecurityException) { /* ignore — name stays as-is */ }
             gattServer = bm.openGattServer(ctx, gattCallback).also {
                 it.addService(service)
             }
@@ -217,6 +222,14 @@ class BlePeripheralPlugin : Plugin() {
         try { advertiser?.stopAdvertising(advCallback) } catch (_: Exception) {}
         try { gattServer?.close() } catch (_: Exception) {}
         gattServer = null; advertiser = null; subscribers.clear()
+        // Restore the original Bluetooth adapter name so the device name is unchanged.
+        originalAdapterName?.let { name ->
+            try {
+                val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                bm?.adapter?.name = name
+            } catch (_: Exception) {}
+            originalAdapterName = null
+        }
         emitState("stopped", "server detenido")
         val ret = JSObject(); ret.put("ok", true); call.resolve(ret)
     }
