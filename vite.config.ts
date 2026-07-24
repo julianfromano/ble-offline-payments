@@ -19,11 +19,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.svg', 'icon-512.svg'],
       manifest: {
-        name: 'BLE Pay (offline)',
-        short_name: 'BLE Pay',
-        description: 'Offline store-and-forward payments prototype over BLE',
-        theme_color: '#0b132b',
-        background_color: '#0b132b',
+        name: 'BH Pagos — sin conexión',
+        short_name: 'BH Pagos',
+        description: 'Demo de pagos sin conexión de celular a celular vía Bluetooth',
+        theme_color: '#F37320',
+        background_color: '#FAFAFA',
         display: 'standalone',
         start_url: '/',
         icons: [

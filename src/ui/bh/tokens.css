@@ -1,0 +1,133 @@
+/* BH Design System — Tokens
+   Importar en index.css o App.css:
+   @import './components/tokens.css'; */
+
+:root {
+  /* ── Superficies ── */
+  --bg-surface-layout:   #FAFAFA;
+  --bg-surface-default:  #FFFFFF;
+
+  /* ── Fondos primarios ── */
+  --bg-primary-default:  #F37320;
+  --bg-primary-subtle:   #F9BF8F;
+  --bg-primary-subtlest: #FEF1E9;
+  --bg-primary-bold:     #BE4B04;
+
+  /* ── Fondos neutros ── */
+  --bg-neutral-default:  #C7C7C7;
+  --bg-neutral-muted:    #F1F1F1;
+  --bg-neutral-track:    #9B9B9B;
+  --bg-neutral-scrim:    rgba(64,64,64,0.16);
+
+  /* ── Fondos feedback (solo subtlest) ── */
+  --bg-feedback-info-default:    #3A77BF;
+  --bg-feedback-info-subtlest:   #EBF1F9;
+  --bg-feedback-success-subtlest:#F0F7E9;
+  --bg-feedback-warning-subtlest:#FDF5E8;
+  --bg-feedback-danger-subtlest: #F7E8EA;
+
+  /* ── Texto neutro ── */
+  --text-neutral-default:  #404040;
+  --text-neutral-subtle:   #616161;
+  --text-neutral-subtlest: #9B9B9B;
+  --text-neutral-muted:    #C7C7C7;
+
+  /* ── Texto primario ── */
+  --text-primary-default:    #F37320;
+  --text-primary-subtle:     #BE4B04;
+  --text-primary-on-default: #FFFFFF;
+  --text-primary-on-subtlest:#BE4B04;
+
+  /* ── Texto feedback ── */
+  --text-feedback-info-default:       #3A77BF;
+  --text-feedback-info-on-default:    #FFFFFF;
+  --text-feedback-info-on-subtlest:   #17304C;
+  --text-feedback-success-default:    #6DAF25;
+  --text-feedback-success-on-subtlest:#253C0D;
+  --text-feedback-warning-default:    #E79B1E;
+  --text-feedback-warning-on-subtlest:#61410D;
+  --text-feedback-danger-default:     #AD1B2D;
+  --text-feedback-danger-on-subtlest: #450B12;
+
+  /* ── Bordes ── */
+  --border-neutral-subtle:  #F1F1F1;
+  --border-neutral-default: #9B9B9B;
+  --border-neutral-muted:   #C7C7C7;
+  --border-primary-default: #F37320;
+  --border-primary-bold:    #BE4B04;
+  --border-feedback-info-default:   #3A77BF;
+  --border-feedback-success-default:#6DAF25;
+  --border-feedback-warning-default:#E79B1E;
+  --border-feedback-danger-default: #AD1B2D;
+
+  /* ── Sombras ── */
+  --shadow-default: rgba(97,97,97,0.16);
+
+  /* ── Base ── */
+  --bh-font:           'Roboto', system-ui, -apple-system, sans-serif;
+  --bh-weight-regular: 400;
+  --bh-weight-medium:  500;
+  --bh-radius-xs:      4px;
+  --bh-radius-sm:      8px;
+  --bh-radius-md:      12px;
+  --bh-radius-lg:      16px;
+  --bh-radius-round:   999px;
+
+  /* ── Tipografía responsiva ── */
+  --font-h1-size: 24px; --font-h1-lh: 32px;
+  --font-h2-size: 20px; --font-h2-lh: 28px;
+  --font-h3-size: 16px; --font-h3-lh: 24px;
+  --font-body-md-size: 16px; --font-body-md-lh: 24px;
+  --font-body-sm-size: 14px; --font-body-sm-lh: 20px;
+  --font-body-xs-size: 12px; --font-body-xs-lh: 16px;
+
+  /* ── Tipografía fija (lock) ── */
+  --font-lock-sm-size: 14px; --font-lock-sm-lh: 20px;
+  --font-lock-xs-size: 12px; --font-lock-xs-lh: 16px;
+
+  /* ── Espaciado responsivo ── */
+  --spacing-xs: 4px;  --spacing-sm: 8px;
+  --spacing-md: 16px; --spacing-lg: 24px; --spacing-xl: 32px;
+
+  /* ── Espaciado fijo ── */
+  --spacing-lock-xxs:    2px;  --spacing-lock-xs:     4px;
+  --spacing-lock-sm:     8px;  --spacing-lock-sm-alt: 12px;
+  --spacing-lock-md:     16px; --spacing-lock-lg:     24px;
+
+  /* ── Tokens de componentes (retail — default) ── */
+  --btn-bg-enabled:      #F37320;
+  --btn-bg-hover:        #BE4B04;
+  --btn-bg-hover-subtle: #FEF1E9;
+  --btn-border-enabled:  #F37320;
+  --btn-border-hover:    #BE4B04;
+  --btn-text-enabled:    #F37320;
+  --btn-text-hover:      #BE4B04;
+  --btn-text-on-enabled: #FFFFFF;
+
+  --spacing-optic-alert: 2px;
+}
+
+/* ── Corporate: agregar clase .bh-corporate al elemento raíz ── */
+.bh-corporate {
+  --btn-bg-enabled:      #08100C;
+  --btn-bg-hover:        #404040;
+  --btn-bg-hover-subtle: #C7C7C7;
+  --btn-border-enabled:  #08100C;
+  --btn-border-hover:    #08100C;
+  --btn-text-enabled:    #08100C;
+  --btn-text-hover:      #08100C;
+  --btn-text-on-enabled: #FAFAFA;
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --font-h1-size: 20px; --font-h1-lh: 28px;
+    --font-h2-size: 16px; --font-h2-lh: 24px;
+    --font-h3-size: 14px; --font-h3-lh: 20px;
+    --font-body-md-size: 14px; --font-body-md-lh: 20px;
+    --font-body-sm-size: 12px; --font-body-sm-lh: 16px;
+    --spacing-xs: 2px;  --spacing-sm: 4px;
+    --spacing-md: 12px; --spacing-lg: 20px; --spacing-xl: 28px;
+    --spacing-optic-alert: 4px;
+  }
+}

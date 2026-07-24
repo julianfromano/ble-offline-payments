@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { isNative, BlePeripheral } from '../../ble/peripheral';
 import { createPaymentIntent, decodeAck, encodeMessage } from '../../protocol/codec';
-import type { Currency, PaymentIntent } from '../../protocol/types';
+import type { PaymentIntent } from '../../protocol/types';
 import {
   HELLO_PROBE,
   aesGcmDecrypt,
@@ -21,37 +21,39 @@ import {
 } from '../../protocol/secure';
 import { applyAck, markStatus, upsertFromIntent, wasSeen } from '../../storage/ledger';
 import { logger } from '../logger';
+import { formatAmount, parseAmountToMinor } from '../format';
+import { BhAlert, BhButton, BhTextField } from '../bh';
+import successImg from '../bh/assets/success.svg';
 
 const TE = new TextEncoder();
 const TD = new TextDecoder('utf-8', { fatal: true });
 const PROBE_BYTES = TE.encode(HELLO_PROBE);
 
+const CURRENCY = 'ARS';
+const TTL_MS = 5 * 60_000; // ventana de validez del cobro (5 min, cómoda para demo)
+
+type Phase = 'form' | 'waiting' | 'confirmed' | 'done' | 'error';
+
 /**
  * "Cobrar" — receiver side, protocol v1.
  *
- * UX changes vs original:
- *  - Shows a single 4-digit decimal code (replaces hex shortId + separate 6-digit PIN).
- *    The same code is used for BLE device name discovery AND channel ECDH key derivation.
- *  - Bilateral confirmation: when the payer sends a buyer_confirm envelope the vendor sees
- *    "Comprador confirmó $Y" before the final ack arrives — no extra user interaction.
- *
- * Protocol flow:
- *   1) Generate ephemeral ECDH P-256 pair + 4-digit code.
- *   2) Advertise hello envelope as BLEPay-${code}.
- *   3) Receive hello_ack → verify probe → derive session key.
- *   4) Publish encrypted sec_intent.
- *   5) Receive buyer_confirm (optional) → show bilateral confirmation.
- *   6) Receive sec_ack → finalize.
+ * Flujo de protocolo (sin cambios):
+ *   1) Par ECDH P-256 efímero + código de 4 dígitos.
+ *   2) Advertising del hello como BLEPay-${code}.
+ *   3) hello_ack → verificar probe → derivar clave de sesión.
+ *   4) Publicar sec_intent cifrado.
+ *   5) buyer_confirm → confirmación bilateral en pantalla.
+ *   6) sec_ack → finalizar.
  */
 export function ChargeMode() {
-  const [amount, setAmount] = useState('1500');
-  const [currency, setCurrency] = useState<Currency>('ARS');
-  const [ttlSec, setTtlSec] = useState('120');
+  const [amountInput, setAmountInput] = useState('');
   const [memo, setMemo] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>('form');
   const [displayCode, setDisplayCode] = useState<string | null>(null);
   const [intent, setIntent] = useState<PaymentIntent | null>(null);
-  const [stage, setStage] = useState<string>('idle');
+  const [statusText, setStatusText] = useState('');
+  const [errorText, setErrorText] = useState('');
   const [buyerConfirmedAmount, setBuyerConfirmedAmount] = useState<{
     amount: number; currency: string
   } | null>(null);
@@ -96,18 +98,18 @@ export function ChargeMode() {
       }
       sessionKeyRef.current = key;
       logger.info('protocol', 'handshake OK — clave de sesión derivada');
-      setStage('canal cifrado, publicando intent');
+      setStatusText('Comprador conectado — conexión segura establecida');
 
       const intentBytes = encodeMessage(pendingIntentRef.current);
       const { iv, ct } = await aesGcmEncrypt(key, intentBytes);
       const secEnv: SecureEnvelope = { v: 1, kind: 'sec_intent', iv: b64encode(iv), ct: b64encode(ct) };
       await BlePeripheral.updateIntent({ intentBase64: b64encode(encodeSecureEnvelope(secEnv)) });
       await upsertFromIntent(pendingIntentRef.current, 'receiver', 'SENT', 'intent cifrado publicado');
-      setStage('esperando confirmación del comprador…');
+      setStatusText('Esperando que el comprador vea el monto…');
     } catch (e) {
       const msg = (e as Error).message;
       logger.warn('protocol', `hello_ack rechazado: ${msg}`);
-      setStage(`código inválido o MITM (${msg}) — esperando…`);
+      setStatusText('El código ingresado no coincide — esperando otro intento…');
     }
   }
 
@@ -125,7 +127,8 @@ export function ChargeMode() {
       }
       logger.info('protocol', `buyer_confirm: $${payload.amount / 100} ${payload.currency}`);
       setBuyerConfirmedAmount({ amount: payload.amount, currency: payload.currency });
-      setStage('comprador confirmó — esperando autorización biométrica…');
+      setPhase('confirmed');
+      setStatusText('El comprador ve el monto — falta su confirmación final');
     } catch (e) {
       logger.warn('protocol', `buyer_confirm inválido: ${(e as Error).message}`);
     }
@@ -147,16 +150,22 @@ export function ChargeMode() {
       }
       const updated = await applyAck(ack, `ack cifrado: ${ack.result}`);
       logger.info('protocol', `ACK ${ack.result} para ${ack.ref_tx_id}`);
-      setStage(updated?.status === 'ACKED' ? 'cobrado ✓' : 'rechazado');
+      if (updated?.status === 'ACKED') {
+        setPhase('done');
+        setStatusText('');
+      } else {
+        setErrorText('El comprador rechazó el pago.');
+        setPhase('error');
+      }
     } catch (e) {
       logger.error('protocol', `sec_ack inválido: ${(e as Error).message}`);
     }
   }
 
   async function publishNative(pi: PaymentIntent) {
-    setStage('verificando soporte BLE peripheral');
+    setStatusText('Activando Bluetooth…');
     const av = await BlePeripheral.isAvailable();
-    if (!av.available) throw new Error(`BLE peripheral no disponible: ${av.reason ?? 'desconocido'}`);
+    if (!av.available) throw new Error(`Bluetooth no disponible: ${av.reason ?? 'desconocido'}`);
 
     // 4-digit decimal code: discovery + crypto PIN in one value.
     const kp = await generateEphemeralKeyPair();
@@ -199,36 +208,37 @@ export function ChargeMode() {
       logger.info('connect', `central ${c.connected ? 'conectado' : 'desconectado'} ${c.address ?? ''}`);
     }));
 
-    setStage('iniciando advertising');
     await BlePeripheral.startServer({
       intentBase64: b64encode(TE.encode(JSON.stringify(hello))),
       deviceName: `BLEPay-${code}`
     });
     await upsertFromIntent(pi, 'receiver', 'CREATED', 'hello publicado, esperando comprador');
-    setStage(`mostrando código ${code} — esperando pagador`);
+    setPhase('waiting');
+    setStatusText('Esperando al comprador…');
   }
 
   async function onPublish() {
     setBusy(true);
-    setStage('preparando');
+    setErrorText('');
     setDisplayCode(null);
     setIntent(null);
     setBuyerConfirmedAmount(null);
     sessionKeyRef.current = null;
     try {
-      if (!isNative()) throw new Error('Modo seguro v1 sólo soportado en APK por ahora.');
-      const amt = parseInt(amount, 10);
-      const ttl = Math.round(parseFloat(ttlSec) * 1000);
-      if (!Number.isInteger(amt) || amt <= 0) throw new Error('Monto inválido.');
-      if (!Number.isFinite(ttl) || ttl <= 0) throw new Error('TTL inválido.');
-      const pi = await createPaymentIntent({ amount: amt, currency, ttlMs: ttl, memo: memo || undefined });
+      if (!isNative()) throw new Error('Cobrar por Bluetooth funciona desde la app instalada en el celular.');
+      const amt = parseAmountToMinor(amountInput);
+      if (amt === null) throw new Error('Ingresá un monto válido, por ejemplo 1500 o 1500,50.');
+      const pi = await createPaymentIntent({
+        amount: amt, currency: CURRENCY, ttlMs: TTL_MS, memo: memo || undefined
+      });
       setIntent(pi);
       logger.info('protocol', `intent ${pi.tx_id} creado, ${pi.amount} ${pi.currency}`);
       await publishNative(pi);
     } catch (e) {
       const msg = (e as Error).message;
       logger.error('ui', `Cobrar: ${msg}`);
-      setStage(`error: ${msg}`);
+      setErrorText(msg);
+      setPhase('error');
       if (intent) await markStatus(intent.tx_id, 'FAILED', `error: ${msg}`);
       await cleanupSession();
     } finally {
@@ -240,111 +250,108 @@ export function ChargeMode() {
     await cleanupSession();
     setDisplayCode(null);
     setBuyerConfirmedAmount(null);
-    setStage('cancelado');
+    setErrorText('');
+    setPhase('form');
+    setStatusText('');
   }
 
-  const amountDisplay = intent
-    ? `${(intent.amount / 100).toFixed(2)} ${intent.currency}`
-    : null;
+  async function onNewCharge() {
+    await onCancel();
+    setAmountInput('');
+    setMemo('');
+  }
 
-  return (
-    <div className="card">
-      <h2>
-        Cobrar{' '}
-        {isNative()
-          ? <span className="muted">(seguro v1 · ECDH+PIN)</span>
-          : <span className="muted">(no disponible en PWA)</span>}
-      </h2>
-
-      <label htmlFor="amount">Monto (en unidades menores)</label>
-      <input
-        id="amount" type="number" inputMode="numeric" min={1}
-        value={amount} onChange={(e) => setAmount(e.target.value)}
-        disabled={busy} aria-describedby="amount-help"
-      />
-      <p id="amount-help" className="muted">Ej: 1500 = $15,00</p>
-
-      <label htmlFor="currency">Moneda</label>
-      <select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} disabled={busy}>
-        <option value="ARS">ARS</option>
-        <option value="USD">USD</option>
-        <option value="EUR">EUR</option>
-        <option value="BRL">BRL</option>
-      </select>
-
-      <label htmlFor="ttl">TTL (segundos)</label>
-      <input
-        id="ttl" type="number" inputMode="numeric" min={1}
-        value={ttlSec} onChange={(e) => setTtlSec(e.target.value)}
-        disabled={busy}
-      />
-
-      <label htmlFor="memo">Memo (opcional)</label>
-      <input
-        id="memo" type="text" maxLength={80}
-        value={memo} onChange={(e) => setMemo(e.target.value)}
-        disabled={busy}
-      />
-
-      <div className="row" style={{ marginTop: 12 }}>
-        <button className="primary" onClick={onPublish} disabled={busy}>
-          {busy ? 'Procesando…' : 'Iniciar cobro'}
-        </button>
-        <button className="secondary" onClick={onCancel} disabled={busy}>
-          Cancelar
-        </button>
+  // ── Pantalla de éxito ──────────────────────────────────────────────────────
+  if (phase === 'done' && intent) {
+    return (
+      <div className="bh-card result-screen">
+        <img src={successImg} alt="" className="result-img" />
+        <h2 className="result-title">¡Cobro acreditado!</h2>
+        <p className="result-amount">{formatAmount(intent.amount, intent.currency)}</p>
+        {intent.memo && <p className="muted">{intent.memo}</p>}
+        <p className="muted">El comprobante quedó guardado en ambos celulares.</p>
+        <BhButton onClick={onNewCharge}>Nuevo cobro</BhButton>
       </div>
+    );
+  }
 
-      {displayCode && (
-        <div
-          role="region"
-          aria-label="Código de pago para el comprador"
-          style={{
-            marginTop: 16, padding: 16, borderRadius: 8,
-            background: '#0d2c4d', textAlign: 'center'
-          }}
-        >
-          <p className="muted" style={{ margin: 0 }}>
-            Mostrá este código al comprador:
-          </p>
-          <p
-            aria-live="polite"
-            style={{
-              fontSize: 56, fontWeight: 700, letterSpacing: 12,
-              margin: '8px 0 4px 0', fontFamily: 'monospace', color: '#7fd1ff'
-            }}
-          >
-            {displayCode}
-          </p>
-          {amountDisplay && (
-            <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-              {amountDisplay}{memo ? ` — ${memo}` : ''}
-            </p>
-          )}
-        </div>
-      )}
-
-      {buyerConfirmedAmount && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          style={{
-            marginTop: 12, padding: 12, borderRadius: 8,
-            background: '#0d3a1a', border: '1px solid #2a7a4a', textAlign: 'center'
-          }}
-        >
-          <p style={{ margin: 0, fontWeight: 600, color: '#7fd4a0' }}>
-            Comprador confirmó{' '}
-            ${(buyerConfirmedAmount.amount / 100).toFixed(2)}{' '}
-            {buyerConfirmedAmount.currency}
-          </p>
-          <p className="muted" style={{ margin: '4px 0 0 0', fontSize: 13 }}>
-            Esperando autorización biométrica del comprador…
+  // ── Cobro activo: código en pantalla ──────────────────────────────────────
+  if ((phase === 'waiting' || phase === 'confirmed') && displayCode && intent) {
+    return (
+      <div className="bh-card">
+        <div className="code-panel" role="region" aria-label="Código de pago para el comprador">
+          <p className="code-panel__hint">Decile este código al comprador</p>
+          <p className="code-panel__code" aria-live="polite">{displayCode}</p>
+          <p className="code-panel__amount">
+            {formatAmount(intent.amount, intent.currency)}
+            {intent.memo ? ` · ${intent.memo}` : ''}
           </p>
         </div>
+
+        {phase === 'confirmed' && buyerConfirmedAmount ? (
+          <BhAlert
+            severity="success"
+            title={`El comprador confirmó ${formatAmount(buyerConfirmedAmount.amount, buyerConfirmedAmount.currency)}`}
+            description="Falta su autorización final en el otro celular."
+          />
+        ) : (
+          <p className="status-line" aria-live="polite">
+            <span className="pulse-dot" aria-hidden="true" />
+            {statusText}
+          </p>
+        )}
+
+        <div className="actions-row">
+          <BhButton variant="tertiary" onClick={onCancel}>Cancelar cobro</BhButton>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Formulario ─────────────────────────────────────────────────────────────
+  return (
+    <div className="bh-card">
+      <h2 className="section-title">¿Cuánto querés cobrar?</h2>
+
+      {!isNative() && (
+        <BhAlert
+          severity="info"
+          title="Vista previa"
+          description="Cobrar por Bluetooth funciona desde la app instalada en el celular."
+        />
       )}
 
-      <p className="muted" aria-live="polite" style={{ marginTop: 12 }}>Estado: {stage}</p>
+      <BhTextField
+        id="amount"
+        label="Monto en pesos"
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="0,00"
+        value={amountInput}
+        onChange={(e) => setAmountInput(e.target.value)}
+        disabled={busy}
+        helper="Ejemplo: 1500 o 1500,50"
+      />
+      <BhTextField
+        id="memo"
+        label="Concepto (opcional)"
+        type="text"
+        maxLength={80}
+        placeholder="Ej: feria — puesto 12"
+        value={memo}
+        onChange={(e) => setMemo(e.target.value)}
+        disabled={busy}
+      />
+
+      {phase === 'error' && errorText && (
+        <BhAlert severity="error" title="No pudimos iniciar el cobro" description={errorText} />
+      )}
+
+      <div className="actions-row">
+        <BhButton onClick={onPublish} disabled={busy || !amountInput}>
+          {busy ? 'Preparando…' : 'Generar código de cobro'}
+        </BhButton>
+      </div>
     </div>
   );
 }

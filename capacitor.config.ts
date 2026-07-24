@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.blepay.app',
-  appName: 'BLE Pay',
+  appName: 'BH Pagos',
   webDir: 'dist',
   android: {
     allowMixedContent: false

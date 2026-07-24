@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">BLE Pay</string>
-    <string name="title_activity_main">BLE Pay</string>
+    <string name="app_name">BH Pagos</string>
+    <string name="title_activity_main">BH Pagos</string>
     <string name="package_name">com.blepay.app</string>
     <string name="custom_url_scheme">com.blepay.app</string>
 </resources>

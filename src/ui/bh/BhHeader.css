@@ -1,0 +1,21 @@
+.bh-header {
+  padding: 0 var(--spacing-lg);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  font-family: var(--bh-font);
+}
+.bh-header__logo { height: 36px; display: block; flex-shrink: 0; }
+.bh-header__nav  { display: flex; gap: var(--spacing-lg); align-items: center; flex: 1; }
+.bh-header__actions { display: flex; gap: var(--spacing-sm); align-items: center; }
+
+/* Retail: desktop blanco, mobile naranja */
+.bh-header--retail { background: #FFFFFF; border-bottom: 1px solid var(--border-neutral-subtle); }
+@media (max-width: 1023px) {
+  .bh-header--retail { background: #F37320; border-bottom: none; }
+}
+
+/* Corporate: siempre blanco */
+.bh-header--corporate { background: #FFFFFF; border-bottom: 1px solid var(--border-neutral-subtle); }
